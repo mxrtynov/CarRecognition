@@ -29,7 +29,7 @@ car-recognition-lab/
 graph TD
     Data[data.py<br>Обучающая выборка и объекты] --> MD[MinDistanceClassifier.py<br>Метод мин. расстояния]
     Data --> PC[PerceptronClassifier.py<br>Алгоритм восприятия]
-    Data --> UI[ui.py<br>Графический UI и графики]
+    Data --> UI[ui.py<br>Графический интерфейс]
     
     MD --> UI
     PC --> UI
