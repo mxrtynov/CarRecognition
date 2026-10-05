@@ -2,14 +2,15 @@ import time
 import random
 from typing import List, Tuple, Dict
 
-from classifier import MinDistanceClassifier, PerceptronClassifier
+from MinDistanceClassifier import MinDistanceClassifier
+from PerceptronClassifier import PerceptronClassifier
 
 
-def theoretical() -> str:
+def theoretical(dim: int = 5) -> str:
     return (
         "ОБОЗНАЧЕНИЯ\n"
-        "  N  — число объектов обучающего множества\n"
-        "  d  — размерность признакового пространства (d = 2)\n"
+        f"  N  — число объектов обучающего множества\n"
+        f"  d  — размерность признакового пространства (d = {dim})\n"
         "  K  — число классов (K = 2)\n"
         "  I  — число эпох обучения перцептрона\n\n"
         "МЕТОД МИНИМАЛЬНОГО РАССТОЯНИЯ\n"
@@ -28,8 +29,7 @@ def theoretical() -> str:
     )
 
 
-def measure(train_set: List[Tuple[float, float, int]],
-            repeats: int = 200) -> Dict[str, float]:
+def measure(train_set, repeats: int = 200) -> Dict[str, float]:
     result = {}
 
     t0 = time.perf_counter()
@@ -38,9 +38,10 @@ def measure(train_set: List[Tuple[float, float, int]],
     result["md_fit"] = (time.perf_counter() - t0) / repeats
 
     md = MinDistanceClassifier().fit(train_set)
+    sample = train_set[0][:-1]  # признаки без метки класса
     t0 = time.perf_counter()
     for _ in range(repeats):
-        md.predict(train_set[0][0], train_set[0][1])
+        md.predict(*sample)
     result["md_predict"] = (time.perf_counter() - t0) / repeats
 
     t0 = time.perf_counter()
@@ -51,7 +52,7 @@ def measure(train_set: List[Tuple[float, float, int]],
     pc = PerceptronClassifier().fit(train_set)
     t0 = time.perf_counter()
     for _ in range(repeats):
-        pc.predict(train_set[0][0], train_set[0][1])
+        pc.predict(*sample)
     result["pc_predict"] = (time.perf_counter() - t0) / repeats
 
     return result
@@ -59,7 +60,8 @@ def measure(train_set: List[Tuple[float, float, int]],
 
 def report(train_set) -> str:
     m = measure(train_set)
-    lines = [theoretical(), "ЭКСПЕРИМЕНТ (среднее по 200 запускам)", ""]
+    dim = len(train_set[0]) - 1
+    lines = [theoretical(dim), "ЭКСПЕРИМЕНТ (среднее по 200 запускам)", ""]
     lines.append(f"  Обучение, мин. расстояние : {m['md_fit']*1e6:9.3f} мкс")
     lines.append(f"  Обучение, восприятие      : {m['pc_fit']*1e6:9.3f} мкс")
     lines.append(f"  Распознавание, мин. расст.: {m['md_predict']*1e6:9.3f} мкс")
@@ -67,26 +69,20 @@ def report(train_set) -> str:
     return "\n".join(lines)
 
 
-def _make_synthetic(n: int, separable: bool = True) -> List[Tuple[float, float, int]]:
+def _make_synthetic(n: int, dim: int = 5):
     data = []
     for _ in range(n):
-        if separable:
-            c = random.choice([1, 2])
-            if c == 1:
-                x1 = random.uniform(0.05, 0.45)
-                x2 = random.uniform(0.05, 0.45)
-            else:
-                x1 = random.uniform(0.55, 0.95)
-                x2 = random.uniform(0.55, 0.95)
+        c = random.choice([1, 2])
+        if c == 1:
+            features = tuple(random.uniform(0.05, 0.45) for _ in range(dim))
         else:
-            c = random.choice([1, 2])
-            x1 = random.uniform(0.0, 1.0)
-            x2 = random.uniform(0.0, 1.0)
-        data.append((x1, x2, c))
+            features = tuple(random.uniform(0.55, 0.95) for _ in range(dim))
+        data.append((*features, c))
     return data
 
 
 def measure_scaling(sizes: List[int] = None,
+                    dim: int = 5,
                     repeats: int = 20) -> Dict[str, List[float]]:
     if sizes is None:
         sizes = [100, 200, 500, 1000, 2000, 5000]
@@ -100,7 +96,7 @@ def measure_scaling(sizes: List[int] = None,
     }
 
     for n in sizes:
-        train = _make_synthetic(n, separable=True)
+        train = _make_synthetic(n, dim=dim)
 
         t0 = time.perf_counter()
         for _ in range(repeats):
@@ -114,23 +110,24 @@ def measure_scaling(sizes: List[int] = None,
 
         md = MinDistanceClassifier().fit(train)
         pc = PerceptronClassifier().fit(train)
+        sample = train[0][:-1]
 
         t0 = time.perf_counter()
         for _ in range(repeats):
-            md.predict(0.5, 0.5)
+            md.predict(*sample)
         result["md_predict"].append((time.perf_counter() - t0) / repeats)
 
         t0 = time.perf_counter()
         for _ in range(repeats):
-            pc.predict(0.5, 0.5)
+            pc.predict(*sample)
         result["pc_predict"].append((time.perf_counter() - t0) / repeats)
 
     return result
 
 
-def scaling_report(sizes: List[int] = None) -> str:
-    data = measure_scaling(sizes=sizes)
-    lines = ["ЗАВИСИМОСТЬ ВРЕМЕНИ ОТ РАЗМЕРА ВЫБОРКИ N", ""]
+def scaling_report(sizes: List[int] = None, dim: int = 5) -> str:
+    data = measure_scaling(sizes=sizes, dim=dim)
+    lines = [f"ЗАВИСИМОСТЬ ВРЕМЕНИ ОТ РАЗМЕРА ВЫБОРКИ N (d = {dim})", ""]
     header = (f"{'N':>6} | {'MD fit, мкс':>12} | {'PC fit, мкс':>12} | "
               f"{'MD pred, мкс':>13} | {'PC pred, мкс':>13}")
     lines.append(header)

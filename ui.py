@@ -6,20 +6,91 @@ matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from data import get_train_set, get_unknown_set, MAX_X1, MAX_X2, normalize
-from classifier import MinDistanceClassifier, PerceptronClassifier
+from data import get_train_set, get_unknown_set, MAX_X1, MAX_X2, FEATURE_MAX
+from MinDistanceClassifier import MinDistanceClassifier
+from PerceptronClassifier import PerceptronClassifier
 from complexity import report as complexity_report
-from ui_theme import (
-    apply_theme,
-    BG, BG_PANEL, BG_CARD, BG_INPUT, BORDER,
-    FG, FG_DIM, FG_MUTED,
-    ACCENT, ACCENT2, SUCCESS, DANGER, WARN,
-    FONT, FONT_S, FONT_XS, FONT_B, FONT_H1, FONT_H3, FONT_MONO,
-    FONT_VALUE,
-)
+
+
+BG = "#0f1218"
+BG_PANEL = "#161a22"
+BG_CARD = "#1a1f29"
+BG_INPUT = "#1f2530"
+BORDER = "#262c38"
+
+FG = "#e8ecf4"
+FG_DIM = "#8b93a8"
+FG_MUTED = "#5a6076"
+
+ACCENT = "#7aa2f7"
+ACCENT2 = "#bb9af7"
+SUCCESS = "#9ece6a"
+DANGER = "#f7768e"
+WARN = "#e0af68"
+
+FONT = ("Segoe UI", 10)
+FONT_S = ("Segoe UI", 9)
+FONT_XS = ("Segoe UI", 8)
+FONT_B = ("Segoe UI", 10, "bold")
+FONT_H1 = ("Segoe UI", 15, "bold")
+FONT_H3 = ("Segoe UI", 10, "bold")
+FONT_MONO = ("Consolas", 10)
+FONT_VALUE = ("Segoe UI", 26, "bold")
+
+
+def apply_theme(root):
+    """Настройка ttk-стилей."""
+    style = ttk.Style(root)
+    try:
+        style.theme_use("clam")
+    except tk.TclError:
+        pass
+
+    style.configure(".", background=BG, foreground=FG, font=FONT)
+    style.configure("TFrame", background=BG)
+    style.configure("TLabel", background=BG, foreground=FG, font=FONT)
+
+    style.configure("TButton", background=BG_INPUT, foreground=FG,
+                    font=FONT_B, borderwidth=0, padding=(14, 9),
+                    focusthickness=0, relief="flat")
+    style.map("TButton",
+              background=[("active", BG_CARD), ("pressed", BG_CARD)])
+
+    style.configure("Accent.TButton", background=ACCENT, foreground="#0f1218",
+                    font=FONT_B, borderwidth=0, padding=(14, 9),
+                    focusthickness=0, relief="flat")
+    style.map("Accent.TButton",
+              background=[("active", ACCENT2), ("pressed", ACCENT2)])
+
+    style.configure("Flat.TButton", background=BG_PANEL, foreground=FG_DIM,
+                    font=FONT_S, borderwidth=0, padding=(10, 5),
+                    focusthickness=0, relief="flat")
+    style.map("Flat.TButton",
+              background=[("active", BG_CARD)],
+              foreground=[("active", FG)])
+
+    style.configure("Horizontal.TScale",
+                    background=BG_PANEL, troughcolor=BG_INPUT,
+                    borderwidth=0, lightcolor=ACCENT, darkcolor=ACCENT)
+
+    style.configure("TNotebook", background=BG, borderwidth=0,
+                    tabmargins=(8, 6, 0, 0))
+    style.configure("TNotebook.Tab",
+                    background=BG, foreground=FG_MUTED,
+                    font=FONT_B, padding=(20, 10), borderwidth=0)
+    style.map("TNotebook.Tab",
+              background=[("selected", BG_CARD), ("active", BG_CARD)],
+              foreground=[("selected", ACCENT), ("active", FG)])
+
 
 CLASS_NAMES = {1: "Экономный", 2: "Спортивный"}
 CLASS_COLORS = {1: ACCENT, 2: DANGER}
+
+# Нормированные значения X3, X4, X5 для «своего автомобиля».
+# На графике визуализируются только X1 и X2; остальные зафиксированы.
+X3_DEFAULT = 0.35
+X4_DEFAULT = 0.55
+X5_DEFAULT = 0.55
 
 
 class LabUI:
@@ -42,7 +113,7 @@ class LabUI:
         self._build()
         self._update_all()
 
-    # ---------- layout ----------
+    # ---------- построение интерфейса ----------
 
     def _build(self):
         self._build_header()
@@ -71,7 +142,7 @@ class LabUI:
         tk.Label(inner, text="Распознавание автомобилей", bg=BG, fg=FG,
                  font=FONT_H1).pack(side="left")
 
-        tk.Label(inner, text="расход топлива  ×  мощность",
+        tk.Label(inner, text="5 признаков · 2 класса",
                  bg=BG, fg=FG_DIM, font=FONT).pack(
             side="left", padx=(16, 0), pady=(4, 0))
 
@@ -98,8 +169,8 @@ class LabUI:
     def _build_plot_tab(self):
         head = tk.Frame(self.tab_plot, bg=BG_CARD)
         head.pack(fill="x", padx=22, pady=(16, 4))
-        tk.Label(head, text="Признаковое пространство", bg=BG_CARD, fg=FG,
-                 font=FONT_H3).pack(side="left")
+        tk.Label(head, text="Признаковое пространство (X1 × X2)",
+                 bg=BG_CARD, fg=FG, font=FONT_H3).pack(side="left")
         tk.Label(head, text="клик по полю — задать автомобиль",
                  bg=BG_CARD, fg=FG_DIM, font=FONT_S).pack(side="right")
 
@@ -119,9 +190,9 @@ class LabUI:
     def _build_objects_tab(self):
         head = tk.Frame(self.tab_objects, bg=BG_CARD)
         head.pack(fill="x", padx=22, pady=(16, 8))
-        tk.Label(head, text="Распознавание заданных объектов", bg=BG_CARD,
-                 fg=FG, font=FONT_H3).pack(side="left")
-        tk.Label(head, text="5 автомобилей · оба метода",
+        tk.Label(head, text="Распознавание заданных объектов",
+                 bg=BG_CARD, fg=FG, font=FONT_H3).pack(side="left")
+        tk.Label(head, text="5 автомобилей · 5 признаков · оба метода",
                  bg=BG_CARD, fg=FG_DIM, font=FONT_S).pack(side="right")
 
         self.rec_text = tk.Text(self.tab_objects, bg=BG_CARD, fg=FG,
@@ -135,8 +206,8 @@ class LabUI:
     def _build_cx_tab(self):
         head = tk.Frame(self.tab_cx, bg=BG_CARD)
         head.pack(fill="x", padx=22, pady=(16, 8))
-        tk.Label(head, text="Вычислительная сложность", bg=BG_CARD,
-                 fg=FG, font=FONT_H3).pack(side="left")
+        tk.Label(head, text="Вычислительная сложность",
+                 bg=BG_CARD, fg=FG, font=FONT_H3).pack(side="left")
 
         bar = tk.Frame(self.tab_cx, bg=BG_CARD)
         bar.pack(fill="x", padx=22, pady=(0, 8))
@@ -159,9 +230,9 @@ class LabUI:
         for s in ax.spines.values():
             s.set_visible(False)
         ax.tick_params(colors=FG_MUTED, labelsize=9, length=0)
-        ax.set_xlabel("Расход топлива, л/100 км", color=FG_DIM,
+        ax.set_xlabel("Расход топлива, л/100 км (X1)", color=FG_DIM,
                       fontsize=10, labelpad=8)
-        ax.set_ylabel("Мощность, л.с.", color=FG_DIM,
+        ax.set_ylabel("Мощность, л.с. (X2)", color=FG_DIM,
                       fontsize=10, labelpad=8)
         ax.grid(True, color=BORDER, linewidth=0.6, alpha=0.6)
         ax.set_axisbelow(True)
@@ -176,13 +247,18 @@ class LabUI:
                  font=FONT_XS).pack(anchor="w")
         tk.Frame(pad, bg=BG_PANEL, height=10).pack()
 
-        self._slider(pad, "Расход топлива", "л/100 км",
+        self._slider(pad, "Расход топлива (X1)", "л/100 км",
                      self.x1, 0, MAX_X1, 0.1, "{:.1f}")
         tk.Frame(pad, bg=BG_PANEL, height=14).pack()
-        self._slider(pad, "Мощность", "л.с.",
+        self._slider(pad, "Мощность (X2)", "л.с.",
                      self.x2, 0, MAX_X2, 5, "{:.0f}")
 
-        tk.Frame(pad, bg=BG_PANEL, height=28).pack()
+        tk.Frame(pad, bg=BG_PANEL, height=10).pack()
+        tk.Label(pad,
+                 text=f"X3 = {X3_DEFAULT:.2f}   X4 = {X4_DEFAULT:.2f}   X5 = {X5_DEFAULT:.2f}",
+                 bg=BG_PANEL, fg=FG_MUTED, font=FONT_XS).pack(anchor="w")
+
+        tk.Frame(pad, bg=BG_PANEL, height=24).pack()
 
         tk.Label(pad, text="ПРЕДСКАЗАНИЕ", bg=BG_PANEL, fg=FG_MUTED,
                  font=FONT_XS).pack(anchor="w")
@@ -238,7 +314,7 @@ class LabUI:
                   variable=var, command=on_change,
                   style="Horizontal.TScale").pack(fill="x", pady=(6, 0))
 
-    # ---------- events ----------
+    # ---------- события ----------
 
     def _on_plot_click(self, event):
         if event.inaxes is not self.ax or event.xdata is None:
@@ -254,7 +330,7 @@ class LabUI:
         self.x2.set(200.0)
         self._update_all()
 
-    # ---------- refresh ----------
+    # ---------- обновление ----------
 
     def _update_all(self):
         self._refresh_plot()
@@ -262,55 +338,52 @@ class LabUI:
         self._refresh_custom()
         self._refresh_models_info()
 
+    def _current_features(self):
+        """Нормированный вектор из 5 признаков для «своего автомобиля»."""
+        x1n = self.x1.get() / MAX_X1
+        x2n = self.x2.get() / MAX_X2
+        return (x1n, x2n, X3_DEFAULT, X4_DEFAULT, X5_DEFAULT)
+
     def _refresh_plot(self):
         ax = self.ax
         ax.clear()
         self._style_axes()
 
+        # Точки обучающего множества — проекция на (X1, X2).
         shown = set()
-        for x1, x2, c in self.train_set:
+        for sample in self.train_set:
+            *features, c = sample
+            x1, x2 = features[0], features[1]
             label = CLASS_NAMES[c] if c not in shown else None
             shown.add(c)
             ax.scatter(x1, x2, c=CLASS_COLORS[c], s=70, marker="o",
                        edgecolors="white", linewidths=0.8,
                        label=label, zorder=5)
 
-        for i, (p1, p2) in enumerate(self.min_dist.prototypes):
+        # Прототипы классов — тоже проекция на (X1, X2).
+        for i, proto in enumerate(self.min_dist.prototypes):
+            p1, p2 = proto[0], proto[1]
             ax.scatter(p1, p2, c=WARN, s=220, marker="*",
                        edgecolors=BG_CARD, linewidths=1.0, zorder=6)
             ax.annotate(f"P{i+1}", (p1, p2), textcoords="offset points",
                         xytext=(10, 10), color=WARN, fontsize=9,
                         fontweight="bold")
 
-        x1a, x2a, x1b, x2b = self.perceptron.boundary_points()
-        ax.plot([x1a, x1b], [x2a, x2b], color=SUCCESS, linewidth=1.8,
-                linestyle="--", label="Граница (восприятие)", zorder=4)
+        # Границы — срезы 5-мерных гиперплоскостей при фиксированных X3..X5.
+        self._draw_slice(ax)
+        self._draw_md_slice(ax)
 
-        if len(self.min_dist.prototypes) == 2:
-            p1 = self.min_dist.prototypes[0]
-            p2 = self.min_dist.prototypes[1]
-            A = 2 * (p1[0] - p2[0])
-            B = 2 * (p1[1] - p2[1])
-            C = (p1[0] ** 2 + p1[1] ** 2) - (p2[0] ** 2 + p2[1] ** 2)
-            pts = []
-            if abs(B) > 1e-9:
-                for xv in [0.0, 1.0]:
-                    pts.append((xv, (C - A * xv) / B))
-            elif abs(A) > 1e-9:
-                xv = C / A
-                pts = [(xv, 0.0), (xv, 1.0)]
-            if len(pts) == 2:
-                ax.plot([pts[0][0], pts[1][0]], [pts[0][1], pts[1][1]],
-                        color=ACCENT, linewidth=1.6, linestyle=":",
-                        label="Граница (мин. расст.)", zorder=3)
-
-        for _, ux1, ux2 in self.unknown_set:
-            ax.scatter(ux1, ux2, facecolors="none", edgecolors=FG_MUTED,
+        # Объекты для распознавания.
+        for sample in self.unknown_set:
+            x1, x2 = sample[1], sample[2]
+            ax.scatter(x1, x2, facecolors="none", edgecolors=FG_MUTED,
                        s=110, marker="s", linewidths=1.6, zorder=7)
 
-        x1, x2 = normalize(self.x1.get(), self.x2.get())
-        md_class = self.min_dist.predict(x1, x2)
-        ax.scatter(x1, x2, c=CLASS_COLORS[md_class], s=280, marker="D",
+        # «Свой автомобиль».
+        features = self._current_features()
+        md_class = self.min_dist.predict(*features)
+        ax.scatter(features[0], features[1], c=CLASS_COLORS[md_class],
+                   s=280, marker="D",
                    edgecolors="white", linewidths=1.6, zorder=9,
                    label="Свой автомобиль")
 
@@ -319,16 +392,55 @@ class LabUI:
 
         self.canvas.draw_idle()
 
-    def _refresh_custom(self):
-        x1r, x2r = self.x1.get(), self.x2.get()
-        x1, x2 = normalize(x1r, x2r)
+    def _draw_slice(self, ax):
+        """Срез гиперплоскости перцептрона при X3..Xd = фиксированные."""
+        w = self.perceptron.w
+        if len(w) < 4:
+            return
+        fixed = (X3_DEFAULT, X4_DEFAULT, X5_DEFAULT)
+        w1, w2 = w[0], w[1]
+        # Вклад зафиксированных признаков + смещение.
+        C = sum(w[2 + j] * fixed[j] for j in range(len(fixed))) + w[-1]
+        if abs(w2) < 1e-9:
+            return
+        x1a, x1b = 0.0, 1.0
+        x2a = -(w1 * x1a + C) / w2
+        x2b = -(w1 * x1b + C) / w2
+        ax.plot([x1a, x1b], [x2a, x2b], color=SUCCESS, linewidth=1.8,
+                linestyle="--", label="Граница (восприятие)", zorder=4)
 
-        md_vals = self.min_dist.decision_values(x1, x2)
+    def _draw_md_slice(self, ax):
+        """Срез границы метода минимального расстояния при X3..Xd = фиксированные."""
+        if len(self.min_dist.prototypes) != 2:
+            return
+        p = self.min_dist.prototypes[0]
+        q = self.min_dist.prototypes[1]
+        if len(p) < 3:
+            return
+        fixed = (X3_DEFAULT, X4_DEFAULT, X5_DEFAULT)
+        A = 2 * (p[0] - q[0])
+        B = 2 * (p[1] - q[1])
+        # Вклад зафиксированных признаков.
+        C = 2 * sum((p[2 + j] - q[2 + j]) * fixed[j]
+                    for j in range(len(fixed)))
+        C += sum(qi * qi - pi * pi for pi, qi in zip(p, q))
+        if abs(B) < 1e-9:
+            return
+        x1a, x1b = 0.0, 1.0
+        x2a = -(A * x1a + C) / B
+        x2b = -(A * x1b + C) / B
+        ax.plot([x1a, x1b], [x2a, x2b], color=ACCENT, linewidth=1.6,
+                linestyle=":", label="Граница (мин. расст.)", zorder=3)
+
+    def _refresh_custom(self):
+        features = self._current_features()
+
+        md_vals = self.min_dist.decision_values(*features)
         best = max(range(len(md_vals)), key=lambda i: md_vals[i])
         md_class = self.min_dist.classes[best]
 
-        pc_val = self.perceptron.decision_value(x1, x2)
-        pc_class = self.perceptron.predict(x1, x2)
+        pc_val = self.perceptron.decision_value(*features)
+        pc_class = self.perceptron.predict(*features)
 
         self.verdict.configure(text=CLASS_NAMES[md_class],
                                fg=CLASS_COLORS[md_class])
@@ -348,15 +460,20 @@ class LabUI:
 
     def _refresh_recognition(self):
         lines = []
-        for name, x1, x2 in self.unknown_set:
-            md_vals = self.min_dist.decision_values(x1, x2)
+        for sample in self.unknown_set:
+            name = sample[0]
+            features = sample[1:]
+
+            md_vals = self.min_dist.decision_values(*features)
             best = max(range(len(md_vals)), key=lambda i: md_vals[i])
             md_class = self.min_dist.classes[best]
-            pc_class = self.perceptron.predict(x1, x2)
-            pc_val = self.perceptron.decision_value(x1, x2)
+            pc_class = self.perceptron.predict(*features)
+            pc_val = self.perceptron.decision_value(*features)
 
+            x1, x2, x3, x4, x5 = features
             lines.append(f"■  {name}")
-            lines.append(f"     X1 = {x1:.3f}    X2 = {x2:.3f}")
+            lines.append(f"     X1 = {x1:.3f}   X2 = {x2:.3f}   "
+                         f"X3 = {x3:.3f}   X4 = {x4:.3f}   X5 = {x5:.3f}")
             lines.append(f"     мин. расстояние     "
                          f"D1 = {md_vals[0]:+.3f}   D2 = {md_vals[1]:+.3f}"
                          f"   →   {CLASS_NAMES[md_class]}")
@@ -374,15 +491,16 @@ class LabUI:
         self.rec_text.configure(state="disabled")
 
     def _refresh_models_info(self):
-        lines = ["прототипы"]
-        for i, ((p1, p2), c) in enumerate(
+        lines = ["прототипы (X1; X2; X3; X4; X5)"]
+        for i, (proto, c) in enumerate(
                 zip(self.min_dist.prototypes, self.min_dist.classes)):
-            lines.append(f"  P{i+1}  {CLASS_NAMES[c]:<10}  "
-                         f"({p1:.3f}; {p2:.3f})")
+            vals = "; ".join(f"{p:.3f}" for p in proto)
+            lines.append(f"  P{i+1}  {CLASS_NAMES[c]:<10}  ({vals})")
         lines.append("")
         lines.append("восприятие")
-        w1, w2, w0 = self.perceptron.w
-        lines.append(f"  W1 = {w1:+.3f}   W2 = {w2:+.3f}   W0 = {w0:+.3f}")
+        w = self.perceptron.w
+        w_terms = "   ".join(f"W{j+1}={wi:+.3f}" for j, wi in enumerate(w[:-1]))
+        lines.append(f"  {w_terms}   W0={w[-1]:+.3f}")
         lines.append(f"  эпох {self.perceptron._epochs}, "
                      f"коррекций {self.perceptron._updates}, "
                      f"{'сошлось' if self.perceptron._converged else 'не сошлось'}")
